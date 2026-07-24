@@ -43,6 +43,9 @@
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; color: white; }
         .header h1 { font-size: 24px; }
         .login-box { max-width: 400px; margin: 100px auto; }
+        .status-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+        .status-online { background: #27ae60; }
+        .status-offline { background: #95a5a6; }
     </style>
 </head>
 <body>
@@ -146,11 +149,15 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2/dist/stomp.min.js"></script>
+
     <script>
-        const BASE_URL = 'http://localhost:8080/api';
+        const BASE_URL = '/api';
         let currentUserId = null;
         let currentUsername = null;
         let currentChatUserId = null;
+        let stompClient = null;
 
         function showRegister() {
             document.getElementById('loginForm').classList.add('hidden');
@@ -221,6 +228,7 @@
                     loadUserList();
                     loadBalance();
                     loadRedPackets();
+                    initWebSocket();
                 } else {
                     document.getElementById('loginError').textContent = data.message;
                 }
@@ -232,6 +240,10 @@
         async function logout() {
             try {
                 await fetch(`${BASE_URL}/users/logout/${currentUserId}`, { method: 'POST' });
+                if (stompClient) {
+                    stompClient.disconnect();
+                    stompClient = null;
+                }
                 location.reload();
             } catch (error) {
                 location.reload();
@@ -259,7 +271,7 @@
                     if (user.id !== currentUserId) {
                         const item = document.createElement('div');
                         item.className = 'user-item ' + (user.isLogin ? 'online' : 'offline');
-                        item.innerHTML = `<strong>${user.nickname || user.username}</strong> (ID: ${user.id})`;
+                        item.innerHTML = `<span class="status-indicator ${user.isLogin ? 'status-online' : 'status-offline'}"></span><strong>${user.nickname || user.username}</strong> (ID: ${user.id})`;
                         item.onclick = () => selectChatUser(user.id, user.nickname || user.username);
                         list.appendChild(item);
                     }
@@ -279,7 +291,7 @@
                 data.data.forEach(user => {
                     const item = document.createElement('div');
                     item.className = 'user-item ' + (user.isLogin ? 'online' : 'offline');
-                    item.innerHTML = `<strong>${user.nickname || user.username}</strong> (ID: ${user.id})`;
+                    item.innerHTML = `<span class="status-indicator ${user.isLogin ? 'status-online' : 'status-offline'}"></span><strong>${user.nickname || user.username}</strong> (ID: ${user.id})`;
                     list.appendChild(item);
                 });
             } catch (error) {
@@ -301,7 +313,7 @@
                 const list = document.getElementById('messageList');
                 list.innerHTML = '';
                 
-                data.data.reverse().forEach(msg => {
+                data.data.forEach(msg => {
                     const item = document.createElement('div');
                     item.className = 'message ' + (msg.fromUserId === currentUserId ? 'sent' : 'received');
                     item.textContent = msg.content;
@@ -337,6 +349,30 @@
             } catch (error) {
                 console.error('发送消息失败:', error);
             }
+        }
+
+        function initWebSocket() {
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+            
+            stompClient.connect({}, function(frame) {
+                console.log('WebSocket连接成功: ' + frame);
+                
+                stompClient.subscribe('/queue/user/' + currentUserId, function(message) {
+                    const msg = JSON.parse(message.body);
+                    if (msg.toUserId === currentUserId && msg.fromUserId === currentChatUserId) {
+                        const list = document.getElementById('messageList');
+                        const item = document.createElement('div');
+                        item.className = 'message received';
+                        item.textContent = msg.content;
+                        list.appendChild(item);
+                        list.scrollTop = list.scrollHeight;
+                    }
+                });
+            }, function(error) {
+                console.error('WebSocket连接失败:', error);
+                setTimeout(initWebSocket, 5000);
+            });
         }
 
         async function loadBalance() {
@@ -439,20 +475,19 @@
 
         async function loadRedPackets() {
             try {
-                const response = await fetch(`${BASE_URL}/redpacket/info/2`);
+                const response = await fetch(`${BASE_URL}/redpacket/list`);
                 const data = await response.json();
                 const list = document.getElementById('redPacketList');
                 
-                if (data.code === 200 && data.data) {
-                    const rp = data.data;
-                    list.innerHTML = `
-                        <div class="red-packet-item" onclick="grabRedPacket(${rp.packetId})">
+                if (data.code === 200 && data.data && data.data.length > 0) {
+                    list.innerHTML = data.data.map(rp => `
+                        <div class="red-packet-item ${rp.status !== 'ACTIVE' ? 'grabbed' : ''}" onclick="grabRedPacket(${rp.packetId})">
                             <strong>🧧 ${rp.message || '红包'}</strong>
                             <div>总金额: ¥${rp.totalAmount} | 剩余: ¥${rp.remainAmount}</div>
                             <div>总数: ${rp.totalCount}个 | 剩余: ${rp.remainCount}个</div>
                             <div>状态: ${rp.status === 'ACTIVE' ? '可抢' : (rp.status === 'FINISHED' ? '已抢完' : '已过期')}</div>
                         </div>
-                    `;
+                    `).join('');
                 } else {
                     list.innerHTML = '<p>暂无红包</p>';
                 }
