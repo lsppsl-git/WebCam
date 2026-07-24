@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>即时通讯与支付系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .card { background: white; border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); padding: 24px; }
+        .btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; transition: all 0.3s; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4); }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-success { background: #27ae60; color: white; }
+        .btn-info { background: #3498db; color: white; }
+        input, select { padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; width: 100%; margin-bottom: 12px; }
+        input:focus { outline: none; border-color: #667eea; }
+        .hidden { display: none; }
+        .tab { display: none; }
+        .tab.active { display: block; }
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+        .nav-tabs button { padding: 10px 20px; border: none; background: #f5f5f5; border-radius: 8px; cursor: pointer; }
+        .nav-tabs button.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .message-list { height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+        .message { padding: 8px 12px; margin-bottom: 8px; border-radius: 8px; }
+        .message.sent { background: #667eea; color: white; text-align: right; }
+        .message.received { background: #f5f5f5; color: #333; }
+        .user-list { height: 300px; overflow-y: auto; border: 1px solid #ddd; border-radius: 8px; padding: 10px; }
+        .user-item { padding: 8px; margin-bottom: 4px; border-radius: 4px; cursor: pointer; }
+        .user-item:hover { background: #f5f5f5; }
+        .user-item.online { border-left: 4px solid #27ae60; }
+        .user-item.offline { border-left: 4px solid #95a5a6; }
+        .wallet-info { display: flex; gap: 20px; margin-bottom: 20px; }
+        .wallet-card { flex: 1; background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 20px; border-radius: 12px; text-align: center; }
+        .red-packet-list { border: 1px solid #ddd; border-radius: 8px; padding: 10px; }
+        .red-packet-item { padding: 12px; margin-bottom: 8px; border: 2px dashed #f39c12; border-radius: 8px; cursor: pointer; }
+        .red-packet-item:hover { background: #fff9e6; }
+        .red-packet-item.grabbed { opacity: 0.5; cursor: not-allowed; }
+        .error { color: #e74c3c; font-size: 12px; margin-bottom: 10px; }
+        .success { color: #27ae60; font-size: 12px; margin-bottom: 10px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; color: white; }
+        .header h1 { font-size: 24px; }
+        .login-box { max-width: 400px; margin: 100px auto; }
+    </style>
+</head>
+<body>
+    <div class="container" id="loginContainer">
+        <div class="card login-box">
+            <h2 style="text-align: center; margin-bottom: 20px; color: #333;">即时通讯与支付系统</h2>
+            <div id="loginForm">
+                <h3 style="margin-bottom: 15px;">登录</h3>
+                <input type="text" id="loginUsername" placeholder="用户名">
+                <input type="password" id="loginPassword" placeholder="密码">
+                <div class="error" id="loginError"></div>
+                <button class="btn btn-primary" style="width: 100%;" onclick="login()">登录</button>
+                <p style="text-align: center; margin-top: 15px;">还没有账号？<a href="#" onclick="showRegister()">立即注册</a></p>
+            </div>
+            <div id="registerForm" class="hidden">
+                <h3 style="margin-bottom: 15px;">注册</h3>
+                <input type="text" id="regUsername" placeholder="用户名（3-20位）">
+                <input type="password" id="regPassword" placeholder="密码（6-20位）">
+                <input type="text" id="regNickname" placeholder="昵称">
+                <div class="error" id="regError"></div>
+                <button class="btn btn-primary" style="width: 100%;" onclick="register()">注册</button>
+                <p style="text-align: center; margin-top: 15px;">已有账号？<a href="#" onclick="showLogin()">立即登录</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="container hidden" id="mainContainer">
+        <div class="header">
+            <h1>即时通讯与支付系统</h1>
+            <div>
+                <span id="currentUser">用户: </span>
+                <button class="btn btn-danger" onclick="logout()">退出登录</button>
+            </div>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="active" onclick="switchTab('chat')">💬 聊天</button>
+            <button onclick="switchTab('wallet')">💰 钱包</button>
+            <button onclick="switchTab('redpacket')">🧧 红包</button>
+            <button onclick="switchTab('users')">👥 用户列表</button>
+        </div>
+
+        <div class="card">
+            <div id="chatTab" class="tab active">
+                <div style="display: flex; gap: 20px;">
+                    <div style="width: 250px;">
+                        <h3>用户列表</h3>
+                        <div class="user-list" id="chatUserList"></div>
+                    </div>
+                    <div style="flex: 1;">
+                        <h3 id="chatTitle">选择用户开始聊天</h3>
+                        <div class="message-list" id="messageList"></div>
+                        <input type="text" id="messageInput" placeholder="输入消息..." onkeypress="if(event.keyCode==13)sendMessage()">
+                        <button class="btn btn-primary" onclick="sendMessage()" style="margin-top: 10px;">发送</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="walletTab" class="tab">
+                <div class="wallet-info">
+                    <div class="wallet-card">
+                        <div style="font-size: 14px; opacity: 0.8;">账户余额</div>
+                        <div style="font-size: 36px; font-weight: bold;" id="balance">0.00</div>
+                    </div>
+                </div>
+                <h3>充值</h3>
+                <input type="number" id="rechargeAmount" placeholder="充值金额">
+                <button class="btn btn-success" onclick="recharge()">充值</button>
+                
+                <h3 style="margin-top: 20px;">转账</h3>
+                <input type="number" id="transferTo" placeholder="接收用户ID">
+                <input type="number" id="transferAmount" placeholder="转账金额">
+                <button class="btn btn-info" onclick="transfer()">转账</button>
+                
+                <div class="success" id="walletSuccess"></div>
+                <div class="error" id="walletError"></div>
+            </div>
+
+            <div id="redpacketTab" class="tab">
+                <h3>发送红包</h3>
+                <input type="number" id="rpAmount" placeholder="红包总金额">
+                <input type="number" id="rpCount" placeholder="红包个数">
+                <input type="text" id="rpMessage" placeholder="祝福语">
+                <select id="rpType">
+                    <option value="RANDOM">拼手气</option>
+                    <option value="FIXED">普通红包</option>
+                </select>
+                <button class="btn btn-success" onclick="sendRedPacket()">发送红包</button>
+                
+                <h3 style="margin-top: 20px;">抢红包</h3>
+                <div class="red-packet-list" id="redPacketList"></div>
+                
+                <div class="success" id="rpSuccess"></div>
+                <div class="error" id="rpError"></div>
+            </div>
+
+            <div id="usersTab" class="tab">
+                <h3>在线用户</h3>
+                <div class="user-list" id="onlineUserList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:8080/api';
+        let currentUserId = null;
+        let currentUsername = null;
+        let currentChatUserId = null;
+
+        function showRegister() {
+            document.getElementById('loginForm').classList.add('hidden');
+            document.getElementById('registerForm').classList.remove('hidden');
+            document.getElementById('regError').textContent = '';
+        }
+
+        function showLogin() {
+            document.getElementById('registerForm').classList.add('hidden');
+            document.getElementById('loginForm').classList.remove('hidden');
+            document.getElementById('loginError').textContent = '';
+        }
+
+        async function register() {
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+            const nickname = document.getElementById('regNickname').value;
+            
+            if (!username || !password) {
+                document.getElementById('regError').textContent = '请填写用户名和密码';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/users/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password, nickname })
+                });
+                const data = await response.json();
+                
+                if (data.code === 200) {
+                    document.getElementById('regError').textContent = '';
+                    alert('注册成功，请登录');
+                    showLogin();
+                } else {
+                    document.getElementById('regError').textContent = data.message;
+                }
+            } catch (error) {
+                document.getElementById('regError').textContent = '注册失败：' + error.message;
+            }
+        }
+
+        async function login() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            if (!username || !password) {
+                document.getElementById('loginError').textContent = '请填写用户名和密码';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/users/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await response.json();
+                
+                if (data.code === 200) {
+                    document.getElementById('loginError').textContent = '';
+                    currentUserId = data.data.user.id;
+                    currentUsername = data.data.user.username;
+                    document.getElementById('currentUser').textContent = '用户: ' + currentUsername;
+                    document.getElementById('loginContainer').classList.add('hidden');
+                    document.getElementById('mainContainer').classList.remove('hidden');
+                    loadUserList();
+                    loadBalance();
+                    loadRedPackets();
+                } else {
+                    document.getElementById('loginError').textContent = data.message;
+                }
+            } catch (error) {
+                document.getElementById('loginError').textContent = '登录失败：' + error.message;
+            }
+        }
+
+        async function logout() {
+            try {
+                await fetch(`${BASE_URL}/users/logout/${currentUserId}`, { method: 'POST' });
+                location.reload();
+            } catch (error) {
+                location.reload();
+            }
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.nav-tabs button').forEach(b => b.classList.remove('active'));
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            event.target.classList.add('active');
+            
+            if (tabName === 'users') loadOnlineUsers();
+            if (tabName === 'redpacket') loadRedPackets();
+        }
+
+        async function loadUserList() {
+            try {
+                const response = await fetch(`${BASE_URL}/users/online`);
+                const data = await response.json();
+                const list = document.getElementById('chatUserList');
+                list.innerHTML = '';
+                
+                data.data.forEach(user => {
+                    if (user.id !== currentUserId) {
+                        const item = document.createElement('div');
+                        item.className = 'user-item ' + (user.isLogin ? 'online' : 'offline');
+                        item.innerHTML = `<strong>${user.nickname || user.username}</strong> (ID: ${user.id})`;
+                        item.onclick = () => selectChatUser(user.id, user.nickname || user.username);
+                        list.appendChild(item);
+                    }
+                });
+            } catch (error) {
+                console.error('加载用户列表失败:', error);
+            }
+        }
+
+        async function loadOnlineUsers() {
+            try {
+                const response = await fetch(`${BASE_URL}/users/online`);
+                const data = await response.json();
+                const list = document.getElementById('onlineUserList');
+                list.innerHTML = '';
+                
+                data.data.forEach(user => {
+                    const item = document.createElement('div');
+                    item.className = 'user-item ' + (user.isLogin ? 'online' : 'offline');
+                    item.innerHTML = `<strong>${user.nickname || user.username}</strong> (ID: ${user.id})`;
+                    list.appendChild(item);
+                });
+            } catch (error) {
+                console.error('加载在线用户失败:', error);
+            }
+        }
+
+        function selectChatUser(userId, username) {
+            currentChatUserId = userId;
+            document.getElementById('chatTitle').textContent = '与 ' + username + ' 聊天';
+            document.getElementById('messageList').innerHTML = '';
+            loadMessages(userId);
+        }
+
+        async function loadMessages(userId) {
+            try {
+                const response = await fetch(`${BASE_URL}/messages/private/${currentUserId}/${userId}`);
+                const data = await response.json();
+                const list = document.getElementById('messageList');
+                list.innerHTML = '';
+                
+                data.data.reverse().forEach(msg => {
+                    const item = document.createElement('div');
+                    item.className = 'message ' + (msg.fromUserId === currentUserId ? 'sent' : 'received');
+                    item.textContent = msg.content;
+                    list.appendChild(item);
+                });
+                list.scrollTop = list.scrollHeight;
+            } catch (error) {
+                console.error('加载消息失败:', error);
+            }
+        }
+
+        async function sendMessage() {
+            const content = document.getElementById('messageInput').value.trim();
+            if (!content || !currentChatUserId) return;
+
+            try {
+                const response = await fetch(`${BASE_URL}/messages/private/${currentUserId}/${currentChatUserId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'TEXT', content })
+                });
+                const data = await response.json();
+                
+                if (data.code === 200) {
+                    const list = document.getElementById('messageList');
+                    const item = document.createElement('div');
+                    item.className = 'message sent';
+                    item.textContent = content;
+                    list.appendChild(item);
+                    list.scrollTop = list.scrollHeight;
+                    document.getElementById('messageInput').value = '';
+                }
+            } catch (error) {
+                console.error('发送消息失败:', error);
+            }
+        }
+
+        async function loadBalance() {
+            try {
+                const response = await fetch(`${BASE_URL}/wallet/balance/${currentUserId}`);
+                const data = await response.json();
+                document.getElementById('balance').textContent = data.data;
+            } catch (error) {
+                console.error('加载余额失败:', error);
+            }
+        }
+
+        async function recharge() {
+            const amount = document.getElementById('rechargeAmount').value;
+            if (!amount || amount <= 0) {
+                document.getElementById('walletError').textContent = '请输入有效的充值金额';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/wallet/recharge?userId=${currentUserId}&amount=${amount}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.code === 200) {
+                    document.getElementById('walletSuccess').textContent = '充值成功！';
+                    document.getElementById('walletError').textContent = '';
+                    document.getElementById('rechargeAmount').value = '';
+                    loadBalance();
+                } else {
+                    document.getElementById('walletError').textContent = data.message;
+                }
+            } catch (error) {
+                document.getElementById('walletError').textContent = '充值失败：' + error.message;
+            }
+        }
+
+        async function transfer() {
+            const toUserId = document.getElementById('transferTo').value;
+            const amount = document.getElementById('transferAmount').value;
+            
+            if (!toUserId || !amount || amount <= 0) {
+                document.getElementById('walletError').textContent = '请填写完整信息';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/wallet/transfer?fromUserId=${currentUserId}&toUserId=${toUserId}&amount=${amount}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.code === 200) {
+                    document.getElementById('walletSuccess').textContent = '转账成功！';
+                    document.getElementById('walletError').textContent = '';
+                    document.getElementById('transferTo').value = '';
+                    document.getElementById('transferAmount').value = '';
+                    loadBalance();
+                } else {
+                    document.getElementById('walletError').textContent = data.message;
+                }
+            } catch (error) {
+                document.getElementById('walletError').textContent = '转账失败：' + error.message;
+            }
+        }
+
+        async function sendRedPacket() {
+            const amount = document.getElementById('rpAmount').value;
+            const count = document.getElementById('rpCount').value;
+            const message = document.getElementById('rpMessage').value;
+            const type = document.getElementById('rpType').value;
+            
+            if (!amount || !count || amount <= 0 || count <= 0) {
+                document.getElementById('rpError').textContent = '请填写完整信息';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/redpacket/send?senderId=${currentUserId}&totalAmount=${amount}&totalCount=${count}&message=${encodeURIComponent(message)}&type=${type}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.code === 200) {
+                    document.getElementById('rpSuccess').textContent = '红包发送成功！';
+                    document.getElementById('rpError').textContent = '';
+                    document.getElementById('rpAmount').value = '';
+                    document.getElementById('rpCount').value = '';
+                    document.getElementById('rpMessage').value = '';
+                    loadBalance();
+                    loadRedPackets();
+                } else {
+                    document.getElementById('rpError').textContent = data.message;
+                }
+            } catch (error) {
+                document.getElementById('rpError').textContent = '发送红包失败：' + error.message;
+            }
+        }
+
+        async function loadRedPackets() {
+            try {
+                const response = await fetch(`${BASE_URL}/redpacket/info/2`);
+                const data = await response.json();
+                const list = document.getElementById('redPacketList');
+                
+                if (data.code === 200 && data.data) {
+                    const rp = data.data;
+                    list.innerHTML = `
+                        <div class="red-packet-item" onclick="grabRedPacket(${rp.packetId})">
+                            <strong>🧧 ${rp.message || '红包'}</strong>
+                            <div>总金额: ¥${rp.totalAmount} | 剩余: ¥${rp.remainAmount}</div>
+                            <div>总数: ${rp.totalCount}个 | 剩余: ${rp.remainCount}个</div>
+                            <div>状态: ${rp.status === 'ACTIVE' ? '可抢' : (rp.status === 'FINISHED' ? '已抢完' : '已过期')}</div>
+                        </div>
+                    `;
+                } else {
+                    list.innerHTML = '<p>暂无红包</p>';
+                }
+            } catch (error) {
+                console.error('加载红包失败:', error);
+            }
+        }
+
+        async function grabRedPacket(packetId) {
+            try {
+                const response = await fetch(`${BASE_URL}/redpacket/grab?packetId=${packetId}&userId=${currentUserId}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.code === 200) {
+                    alert('🎉 恭喜！抢到了 ¥' + data.data.amount);
+                    document.getElementById('rpSuccess').textContent = '抢红包成功！';
+                    loadBalance();
+                    loadRedPackets();
+                } else {
+                    alert(data.message);
+                }
+            } catch (error) {
+                alert('抢红包失败：' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
